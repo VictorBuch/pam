@@ -3,7 +3,10 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -16,6 +19,18 @@ type Package struct {
 }
 
 type SearchResult map[string]Package
+
+const (
+	NIXOS_ROOT               = "/Users/victorbuch/serenityOs"
+	NIX_PKGS_MODULE_TEMPLATE = "./mkApp.txt"
+)
+
+var (
+	NIX_APPS_DIR  = filepath.Join(NIXOS_ROOT, "modules", "apps")
+	NIX_HOSTS_DIR = filepath.Join(NIXOS_ROOT, "hosts")
+)
+
+var showAll bool
 
 func searchPackages(packageName string) (SearchResult, error) {
 	cmd := exec.Command("nix", "search", "nixpkgs", packageName, "--json")
@@ -32,6 +47,92 @@ func searchPackages(packageName string) (SearchResult, error) {
 	return result, nil
 }
 
+func filterAndPrioritizePackages(packages SearchResult, showAll bool) []Package {
+	var topLevel []Package
+	var plugins []Package
+
+	for fullPath, pkg := range packages {
+		pkg.FullPath = fullPath
+		parts := strings.Split(fullPath, ".")
+		if len(parts) > 3 {
+			plugins = append(plugins, pkg)
+		} else {
+			topLevel = append(topLevel, pkg)
+		}
+	}
+	if showAll {
+		return append(topLevel, plugins...)
+	} else {
+		return topLevel
+	}
+}
+
+func categoryExists(content string, category string) bool {
+	pattern := category + " = {"
+	return strings.Contains(content, pattern)
+}
+
+func packageExistsInCategory(content string, category string, packageName string) bool {
+	categoryStart := category + " = {"
+	startPos := strings.Index(content, categoryStart)
+	if startPos == -1 {
+		return false
+	}
+	endPos := strings.Index(content[startPos:], "};")
+	if endPos == -1 {
+		return false
+	}
+	categorySection := content[startPos : startPos+endPos]
+	packagePattern := packageName + ".enable"
+	return strings.Contains(categorySection, packagePattern)
+}
+
+func enablePackage(content string, category string, packageName string) string {
+	oldPattern := packageName + ".enable = false;"
+	newPattern := packageName + ".enable = true;"
+
+	return strings.Replace(content, oldPattern, newPattern, 1)
+}
+
+func addPackageToCategory(content string, category string, packageName string) string {
+	categoryStart := category + " = {"
+	startPos := strings.Index(content, categoryStart)
+	if startPos == -1 {
+		fmt.Println("Error: 'start position' section not found in configuration.nix")
+		return content
+	}
+	endPos := strings.Index(content[startPos:], "};")
+	if endPos == -1 {
+		fmt.Println("Error: 'end position' section not found in configuration.nix")
+		return content
+	}
+
+	absoluteEndPos := startPos + endPos
+
+	fmt.Println("startPos:", startPos, "endPos:", endPos,
+		"absoluteEndPos:", absoluteEndPos)
+	packageContent := "\n        " + packageName + ".enable = true;"
+
+	before := content[:absoluteEndPos]
+	after := content[absoluteEndPos:]
+
+	return before + packageContent + after
+}
+
+func createCategory(content string, category string, packageName string) string {
+	appStart := "apps = {"
+	startPos := strings.Index(content, appStart)
+	if startPos == -1 {
+		fmt.Println("Error: 'apps' section not found in configuration.nix")
+		return content
+	}
+	insertPos := startPos + len(appStart)
+	newCategory := fmt.Sprintf("\n    %s = {\n      %s.enable = true;\n    };\n", category, packageName)
+	before := content[:insertPos]
+	after := content[insertPos:]
+	return before + newCategory + after
+}
+
 func install(cmd *cobra.Command, args []string) {
 	packageName := args[0]
 	packages, err := searchPackages(packageName)
@@ -39,25 +140,122 @@ func install(cmd *cobra.Command, args []string) {
 		fmt.Println("Error: ", err)
 	}
 
-	if len(packages) == 0 {
+	filteredPkgs := filterAndPrioritizePackages(packages, showAll)
+
+	if len(filteredPkgs) == 0 {
 		fmt.Println("No packages found")
 		return
 	}
 
-	fmt.Printf("\nFound %d package(s):\n\n", len(packages))
+	fmt.Printf("\nFound %d package(s):\n\n", len(filteredPkgs))
 
-	i := 1
-	for fullPath, pkg := range packages {
-		fmt.Printf("%d. %s (v%s)\n", i, pkg.PName, pkg.Version)
-		fmt.Printf("   %s\n", pkg.Description)
-		fmt.Printf("   Path: %s\n\n", fullPath)
-		i++
+	for i, pkg := range filteredPkgs {
+		fmt.Printf("%d. %s (v%s)\n", i+1, pkg.PName, pkg.Version)
+		fmt.Printf("%s\n", pkg.Description)
+		fmt.Printf("Path: %s\n\n", pkg.FullPath)
 	}
 
 	var choice uint16
-	fmt.Print("Select a package number to install: ")
+	fmt.Print("\nSelect a package number to install: ")
 	fmt.Scan(&choice)
-	fmt.Printf("You selected: %d", choice)
+	selectedPkg := filteredPkgs[choice-1]
+	fmt.Println(selectedPkg.PName)
+
+	// Scan the apps directory to ask where to add this package
+	files, err := os.ReadDir(NIX_APPS_DIR)
+	if err != nil {
+		fmt.Println("Failed to read nix modules directory: ", err)
+		return
+	}
+
+	var folders []string
+	for _, file := range files {
+		if file.IsDir() {
+			folders = append(folders, file.Name())
+		}
+	}
+	// ask user to select a folder
+	for i, f := range folders {
+		fmt.Printf("\n[%d] - %s", i+1, f)
+	}
+	fmt.Print("\nSelect a folder to put the package module: ")
+	fmt.Scan(&choice)
+	fmt.Printf("\nYou selected: %d", choice)
+
+	selectedFolder := folders[choice-1]
+	fullModulePath := filepath.Join(NIX_APPS_DIR, selectedFolder)
+	fmt.Println(fullModulePath)
+
+	// TODO: We should also rescan the selected folder to see if any nested dirs exist and reprompt - do later
+
+	data, err := os.ReadFile(NIX_PKGS_MODULE_TEMPLATE)
+	if err != nil {
+		fmt.Println("Error reading template file: ", err)
+		return
+	}
+	replacer := strings.NewReplacer("PackageToReplace", selectedPkg.FullPath, "PackageName", selectedPkg.PName, "PackageDescription", selectedPkg.Description)
+	modulePackage := replacer.Replace(string(data))
+	modulePackageBytes := []byte(modulePackage)
+
+	err = os.WriteFile(filepath.Join(fullModulePath, packageName)+".nix", modulePackageBytes, 0o666)
+	if err != nil {
+		fmt.Println("could not write file: ", err)
+		return
+	}
+
+	// TODO: Ask for if they want to modify the package themselves, then open using $EDITOR
+
+	hosts, err := os.ReadDir(NIX_HOSTS_DIR)
+	if err != nil {
+		fmt.Println("Failed to read nix modules directory: ", err)
+		return
+	}
+	var hostDirs []string
+	for _, host := range hosts {
+		if host.IsDir() {
+			hostDirs = append(hostDirs, host.Name())
+		}
+	}
+
+	for i, h := range hostDirs {
+		fmt.Printf("\n[%d] - %s", i+1, h)
+	}
+	fmt.Print("\nSelect a host to enable the pkgs in: ")
+	fmt.Scan(&choice)
+	fmt.Printf("\nYou selected: %d", choice)
+
+	selectedHost := hostDirs[choice-1]
+	fullHostPath := filepath.Join(NIX_HOSTS_DIR, selectedHost, "configuration.nix")
+	fmt.Println(fullHostPath)
+
+	data, err = os.ReadFile(fullHostPath)
+	if err != nil {
+		fmt.Println("Could not read the host condifuration.nix, error: ", err)
+		return
+	}
+	content := string(data)
+	fmt.Println(content)
+	fmt.Println("category: ", selectedFolder)
+
+	if categoryExists(content, selectedFolder) {
+		if packageExistsInCategory(content, selectedFolder, selectedPkg.PName) {
+			fmt.Println("Package already exists. Enabling it...")
+			content = enablePackage(content, selectedFolder, selectedPkg.PName)
+		} else {
+			fmt.Println("Category exists but package does not. Adding it to category...")
+			content = addPackageToCategory(content, selectedFolder, selectedPkg.PName)
+		}
+	} else {
+		fmt.Println("No category exists. Adding category...")
+		content = createCategory(content, selectedFolder, selectedPkg.PName)
+
+	}
+	err = os.WriteFile(fullHostPath, []byte(content), 0o666)
+	if err != nil {
+		fmt.Println("could not write file: ", err)
+		return
+	}
+	fmt.Printf("Done! please run: nixos-rebuild switch --flake %s#%s", NIXOS_ROOT, selectedHost)
 }
 
 var installCmd = &cobra.Command{
@@ -69,4 +267,5 @@ var installCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(installCmd)
+	installCmd.Flags().BoolVarP(&showAll, "show-all", "a", false, "Show all packages including plugins")
 }
