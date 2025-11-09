@@ -30,10 +30,19 @@ var (
 	NIX_HOSTS_DIR = filepath.Join(NIXOS_ROOT, "hosts")
 )
 
-var showAll bool
+var (
+	showAll      bool
+	targetSystem string
+)
 
-func searchPackages(packageName string) (SearchResult, error) {
-	cmd := exec.Command("nix", "search", "nixpkgs", packageName, "--json")
+func searchPackages(packageName string, system string) (SearchResult, error) {
+	args := []string{"search", "nixpkgs", packageName, "--json"}
+
+	if system != "" {
+		args = append(args, "--system", system)
+	}
+
+	cmd := exec.Command("nix", args...)
 	output, err := cmd.Output()
 	if err != nil {
 		fmt.Println("Error: ", err)
@@ -135,7 +144,7 @@ func createCategory(content string, category string, packageName string) string 
 
 func install(cmd *cobra.Command, args []string) {
 	packageName := args[0]
-	packages, err := searchPackages(packageName)
+	packages, err := searchPackages(packageName, targetSystem)
 	if err != nil {
 		fmt.Println("Error: ", err)
 	}
@@ -268,4 +277,5 @@ var installCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(installCmd)
 	installCmd.Flags().BoolVarP(&showAll, "show-all", "a", false, "Show all packages including plugins")
+	installCmd.Flags().StringVarP(&targetSystem, "system", "s", "", "Target system architecture (e.g., x86_64-linux, aarch64-darwin)")
 }
