@@ -8,17 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"nap/internal/tui"
+	"nap/internal/types"
+
 	"github.com/spf13/cobra"
 )
 
-type Package struct {
-	PName       string `json:"pname"`
-	Version     string `json:"version"`
-	Description string `json:"description"`
-	FullPath    string
-}
-
-type SearchResult map[string]Package
+type SearchResult map[string]types.Package
 
 const (
 	NIXOS_ROOT               = "/Users/victorbuch/serenityOs"
@@ -56,9 +52,9 @@ func searchPackages(packageName string, system string) (SearchResult, error) {
 	return result, nil
 }
 
-func filterAndPrioritizePackages(packages SearchResult, showAll bool) []Package {
-	var topLevel []Package
-	var plugins []Package
+func filterAndPrioritizePackages(packages SearchResult, showAll bool) []types.Package {
+	var topLevel []types.Package
+	var plugins []types.Package
 
 	for fullPath, pkg := range packages {
 		pkg.FullPath = fullPath
@@ -156,19 +152,11 @@ func install(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Printf("\nFound %d package(s):\n\n", len(filteredPkgs))
-
-	for i, pkg := range filteredPkgs {
-		fmt.Printf("%d. %s (v%s)\n", i+1, pkg.PName, pkg.Version)
-		fmt.Printf("%s\n", pkg.Description)
-		fmt.Printf("Path: %s\n\n", pkg.FullPath)
+	selectedPkg, err := tui.ShowPackageSelector(filteredPkgs)
+	if err != nil {
+		fmt.Println("Failed to select package: ", err)
+		return
 	}
-
-	var choice uint16
-	fmt.Print("\nSelect a package number to install: ")
-	fmt.Scan(&choice)
-	selectedPkg := filteredPkgs[choice-1]
-	fmt.Println(selectedPkg.PName)
 
 	// Scan the apps directory to ask where to add this package
 	files, err := os.ReadDir(NIX_APPS_DIR)
@@ -187,6 +175,7 @@ func install(cmd *cobra.Command, args []string) {
 	for i, f := range folders {
 		fmt.Printf("\n[%d] - %s", i+1, f)
 	}
+	var choice uint16
 	fmt.Print("\nSelect a folder to put the package module: ")
 	fmt.Scan(&choice)
 	fmt.Printf("\nYou selected: %d", choice)
