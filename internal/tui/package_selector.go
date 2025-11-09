@@ -63,9 +63,8 @@ func (m packageListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m packageListModel) View() string {
 	if m.quitting {
 		return ""
-	} else {
-		return m.list.View()
 	}
+	return m.list.View()
 }
 
 func ShowPackageSelector(packages []types.Package) (*types.Package, error) {
@@ -83,8 +82,7 @@ func ShowPackageSelector(packages []types.Package) (*types.Package, error) {
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	m, err := p.Run()
 	if err != nil {
-		error := fmt.Errorf("Error running the program: %w", err)
-		return nil, error
+		return nil, fmt.Errorf("Error running the program: %w", err)
 	}
 
 	if result, ok := m.(packageListModel); ok {

@@ -92,7 +92,7 @@ func packageExistsInCategory(content string, category string, packageName string
 	return strings.Contains(categorySection, packagePattern)
 }
 
-func enablePackage(content string, category string, packageName string) string {
+func enablePackage(content string, packageName string) string {
 	oldPattern := packageName + ".enable = false;"
 	newPattern := packageName + ".enable = true;"
 
@@ -113,10 +113,7 @@ func addPackageToCategory(content string, category string, packageName string) s
 	}
 
 	absoluteEndPos := startPos + endPos
-
-	fmt.Println("startPos:", startPos, "endPos:", endPos,
-		"absoluteEndPos:", absoluteEndPos)
-	packageContent := "\n        " + packageName + ".enable = true;"
+	packageContent := "\n      " + packageName + ".enable = true;\n    "
 
 	before := content[:absoluteEndPos]
 	after := content[absoluteEndPos:]
@@ -138,11 +135,26 @@ func createCategory(content string, category string, packageName string) string 
 	return before + newCategory + after
 }
 
+func getDirNames(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	var dirs []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirs = append(dirs, entry.Name())
+		}
+	}
+	return dirs, nil
+}
+
 func install(cmd *cobra.Command, args []string) {
 	packageName := args[0]
 	packages, err := searchPackages(packageName, targetSystem)
 	if err != nil {
 		fmt.Println("Error: ", err)
+		return
 	}
 
 	filteredPkgs := filterAndPrioritizePackages(packages, showAll)
@@ -159,30 +171,19 @@ func install(cmd *cobra.Command, args []string) {
 	}
 
 	// Scan the apps directory to ask where to add this package
-	files, err := os.ReadDir(NIX_APPS_DIR)
+	folders, err := getDirNames(NIX_APPS_DIR)
 	if err != nil {
 		fmt.Println("Failed to read nix modules directory: ", err)
 		return
 	}
 
-	var folders []string
-	for _, file := range files {
-		if file.IsDir() {
-			folders = append(folders, file.Name())
-		}
+	selectedFolder, err := tui.ShowStringListSelector("Select folders", folders)
+	if err != nil {
+		fmt.Println("Failed to select a folder: ", err)
+		return
 	}
-	// ask user to select a folder
-	for i, f := range folders {
-		fmt.Printf("\n[%d] - %s", i+1, f)
-	}
-	var choice uint16
-	fmt.Print("\nSelect a folder to put the package module: ")
-	fmt.Scan(&choice)
-	fmt.Printf("\nYou selected: %d", choice)
 
-	selectedFolder := folders[choice-1]
 	fullModulePath := filepath.Join(NIX_APPS_DIR, selectedFolder)
-	fmt.Println(fullModulePath)
 
 	// TODO: We should also rescan the selected folder to see if any nested dirs exist and reprompt - do later
 
@@ -193,66 +194,51 @@ func install(cmd *cobra.Command, args []string) {
 	}
 	replacer := strings.NewReplacer("PackageToReplace", selectedPkg.FullPath, "PackageName", selectedPkg.PName, "PackageDescription", selectedPkg.Description)
 	modulePackage := replacer.Replace(string(data))
-	modulePackageBytes := []byte(modulePackage)
-
-	err = os.WriteFile(filepath.Join(fullModulePath, packageName)+".nix", modulePackageBytes, 0o666)
-	if err != nil {
-		fmt.Println("could not write file: ", err)
-		return
-	}
 
 	// TODO: Ask for if they want to modify the package themselves, then open using $EDITOR
 
-	hosts, err := os.ReadDir(NIX_HOSTS_DIR)
+	hostDirs, err := getDirNames(NIX_HOSTS_DIR)
 	if err != nil {
 		fmt.Println("Failed to read nix modules directory: ", err)
 		return
 	}
-	var hostDirs []string
-	for _, host := range hosts {
-		if host.IsDir() {
-			hostDirs = append(hostDirs, host.Name())
-		}
-	}
 
-	for i, h := range hostDirs {
-		fmt.Printf("\n[%d] - %s", i+1, h)
+	selectedHost, err := tui.ShowStringListSelector("Select a host to install on: ", hostDirs)
+	if err != nil {
+		fmt.Println("Failed to select a host: ", err)
+		return
 	}
-	fmt.Print("\nSelect a host to enable the pkgs in: ")
-	fmt.Scan(&choice)
-	fmt.Printf("\nYou selected: %d", choice)
-
-	selectedHost := hostDirs[choice-1]
 	fullHostPath := filepath.Join(NIX_HOSTS_DIR, selectedHost, "configuration.nix")
-	fmt.Println(fullHostPath)
 
 	data, err = os.ReadFile(fullHostPath)
 	if err != nil {
-		fmt.Println("Could not read the host condifuration.nix, error: ", err)
+		fmt.Println("Could not read the host configuration.nix, error: ", err)
 		return
 	}
 	content := string(data)
-	fmt.Println(content)
-	fmt.Println("category: ", selectedFolder)
 
 	if categoryExists(content, selectedFolder) {
 		if packageExistsInCategory(content, selectedFolder, selectedPkg.PName) {
-			fmt.Println("Package already exists. Enabling it...")
-			content = enablePackage(content, selectedFolder, selectedPkg.PName)
+			content = enablePackage(content, selectedPkg.PName)
 		} else {
-			fmt.Println("Category exists but package does not. Adding it to category...")
 			content = addPackageToCategory(content, selectedFolder, selectedPkg.PName)
 		}
 	} else {
-		fmt.Println("No category exists. Adding category...")
 		content = createCategory(content, selectedFolder, selectedPkg.PName)
-
 	}
-	err = os.WriteFile(fullHostPath, []byte(content), 0o666)
+
+	err = os.WriteFile(filepath.Join(fullModulePath, packageName)+".nix", []byte(modulePackage), 0o644)
 	if err != nil {
 		fmt.Println("could not write file: ", err)
 		return
 	}
+
+	err = os.WriteFile(fullHostPath, []byte(content), 0o644)
+	if err != nil {
+		fmt.Println("could not write file: ", err)
+		return
+	}
+
 	fmt.Printf("Done! please run: nixos-rebuild switch --flake %s#%s", NIXOS_ROOT, selectedHost)
 }
 
