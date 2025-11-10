@@ -5,4 +5,5 @@ type Package struct {
 	Version     string `json:"version"`
 	Description string `json:"description"`
 	FullPath    string
+	System      string
 }

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"nap/internal/types"
 
@@ -19,9 +18,7 @@ func (i packageItem) FilterValue() string {
 }
 
 func (i packageItem) Title() string {
-	systemArr := strings.Split(i.pkg.FullPath, ".")
-	system := systemArr[1]
-	return fmt.Sprintf("%s (%s) - %s", i.pkg.PName, i.pkg.Version, system)
+	return fmt.Sprintf("%s (%s) - %s", i.pkg.PName, i.pkg.Version, i.pkg.System)
 }
 
 func (i packageItem) Description() string {

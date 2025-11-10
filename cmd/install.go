@@ -57,9 +57,14 @@ func filterAndPrioritizePackages(packages SearchResult, showAll bool) []types.Pa
 	var plugins []types.Package
 
 	for fullPath, pkg := range packages {
-		pkg.FullPath = fullPath
-		parts := strings.Split(fullPath, ".")
-		if len(parts) > 3 {
+		fullPathParts := strings.Split(fullPath, ".")
+		if len(fullPathParts) > 1 {
+			pkg.System = fullPathParts[1]
+		}
+		if len(fullPathParts) > 2 {
+			pkg.FullPath = strings.Join(fullPathParts[2:], ".")
+		}
+		if len(fullPathParts) > 3 {
 			plugins = append(plugins, pkg)
 		} else {
 			topLevel = append(topLevel, pkg)
@@ -203,43 +208,47 @@ func install(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	selectedHost, err := tui.ShowStringListSelector("Select a host to install on: ", hostDirs)
+	selectedHosts, err := tui.ShowMultiStringListSelector("Select the hosts where this package should be enabled: ", hostDirs)
+	// selectedHost, err := tui.ShowStringListSelector("Select a host to install on: ", hostDirs)
 	if err != nil {
 		fmt.Println("Failed to select a host: ", err)
 		return
 	}
-	fullHostPath := filepath.Join(NIX_HOSTS_DIR, selectedHost, "configuration.nix")
 
-	data, err = os.ReadFile(fullHostPath)
-	if err != nil {
-		fmt.Println("Could not read the host configuration.nix, error: ", err)
-		return
-	}
-	content := string(data)
+	for _, host := range selectedHosts {
 
-	if categoryExists(content, selectedFolder) {
-		if packageExistsInCategory(content, selectedFolder, selectedPkg.PName) {
-			content = enablePackage(content, selectedPkg.PName)
-		} else {
-			content = addPackageToCategory(content, selectedFolder, selectedPkg.PName)
+		fullHostPath := filepath.Join(NIX_HOSTS_DIR, host, "configuration.nix")
+
+		data, err = os.ReadFile(fullHostPath)
+		if err != nil {
+			fmt.Println("Could not read the host configuration.nix, error: ", err)
+			return
 		}
-	} else {
-		content = createCategory(content, selectedFolder, selectedPkg.PName)
-	}
+		content := string(data)
 
-	err = os.WriteFile(filepath.Join(fullModulePath, packageName)+".nix", []byte(modulePackage), 0o644)
-	if err != nil {
-		fmt.Println("could not write file: ", err)
-		return
-	}
+		if categoryExists(content, selectedFolder) {
+			if packageExistsInCategory(content, selectedFolder, selectedPkg.PName) {
+				content = enablePackage(content, selectedPkg.PName)
+			} else {
+				content = addPackageToCategory(content, selectedFolder, selectedPkg.PName)
+			}
+		} else {
+			content = createCategory(content, selectedFolder, selectedPkg.PName)
+		}
 
-	err = os.WriteFile(fullHostPath, []byte(content), 0o644)
-	if err != nil {
-		fmt.Println("could not write file: ", err)
-		return
-	}
+		err = os.WriteFile(filepath.Join(fullModulePath, packageName)+".nix", []byte(modulePackage), 0o644)
+		if err != nil {
+			fmt.Println("could not write file: ", err)
+			return
+		}
 
-	fmt.Printf("Done! please run: nixos-rebuild switch --flake %s#%s", NIXOS_ROOT, selectedHost)
+		err = os.WriteFile(fullHostPath, []byte(content), 0o644)
+		if err != nil {
+			fmt.Println("could not write file: ", err)
+			return
+		}
+		fmt.Printf("\nDone! please run: nixos-rebuild switch --flake %s#%s", NIXOS_ROOT, host)
+	}
 }
 
 var installCmd = &cobra.Command{
