@@ -27,8 +27,9 @@ var (
 )
 
 var (
-	showAll      bool
-	targetSystem string
+	showAll         bool
+	targetSystem    string
+	installWithBrew bool
 )
 
 func searchPackages(packageName string, system string) (SearchResult, error) {
@@ -197,7 +198,21 @@ func install(cmd *cobra.Command, args []string) {
 		fmt.Println("Error reading template file: ", err)
 		return
 	}
-	replacer := strings.NewReplacer("PackageToReplace", selectedPkg.FullPath, "PackageName", selectedPkg.PName, "PackageDescription", selectedPkg.Description)
+
+	var linuxPackage string
+	var darwinPackage string
+	var homebrewPackage string
+
+	if strings.Contains(selectedPkg.System, "linux") {
+		linuxPackage = "pkgs." + selectedPkg.FullPath
+	} else if strings.Contains(selectedPkg.System, "darwin") {
+		if installWithBrew {
+			homebrewPackage = selectedPkg.PName
+		} else {
+			darwinPackage = "pkgs." + selectedPkg.FullPath
+		}
+	}
+	replacer := strings.NewReplacer("LinuxPackage", linuxPackage, "DarwinPackage", darwinPackage, "HomebrewPackage", homebrewPackage, "PackageName", selectedPkg.PName, "PackageDescription", selectedPkg.Description)
 	modulePackage := replacer.Replace(string(data))
 
 	// TODO: Ask for if they want to modify the package themselves, then open using $EDITOR
@@ -262,4 +277,5 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 	installCmd.Flags().BoolVarP(&showAll, "show-all", "a", false, "Show all packages including plugins")
 	installCmd.Flags().StringVarP(&targetSystem, "system", "s", "", "Target system architecture (e.g., x86_64-linux, aarch64-darwin)")
+	installCmd.Flags().BoolVarP(&installWithBrew, "brew", "b", false, "Use Homebrew cask instead of nix package for Darwin")
 }

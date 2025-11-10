@@ -117,7 +117,7 @@ func ShowMultiStringListSelector(title string, options []string) ([]string, erro
 
 	l := list.New(items, multiStringDelegate{}, 0, 0)
 	l.Title = title
-	l.SetFilteringEnabled(true)
+	l.SetFilteringEnabled(false)
 
 	model := multiStringListModel{list: l, quitting: false, choice: []string{}}
 

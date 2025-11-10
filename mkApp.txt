@@ -11,6 +11,7 @@ args@{
 mkApp {
   _file = toString ./.;
   name = "PackageName";
-  packages = pkgs: [ pkgs.PackageToReplace ];
-  description = "PackageDescription";
+  linuxPackages = pkgs: [ LinuxPackage ];
+  darwinPackages = pkgs: [ DarwinPackage ];
+  darwinExtraConfig = { homebrew.casks = [ "HomebrewPackage" ]; 
 } args
