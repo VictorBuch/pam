@@ -2,10 +2,12 @@ package tui
 
 import (
 	"fmt"
+	"strings"
+
+	"nap/internal/types"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"nap/internal/types"
 )
 
 type packageItem struct {
@@ -17,7 +19,9 @@ func (i packageItem) FilterValue() string {
 }
 
 func (i packageItem) Title() string {
-	return fmt.Sprintf("%s (%s)", i.pkg.PName, i.pkg.Version)
+	systemArr := strings.Split(i.pkg.FullPath, ".")
+	system := systemArr[1]
+	return fmt.Sprintf("%s (%s) - %s", i.pkg.PName, i.pkg.Version, system)
 }
 
 func (i packageItem) Description() string {
