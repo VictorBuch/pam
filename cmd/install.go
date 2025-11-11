@@ -6,11 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
-	"nap/internal/tui"
 	"nap/internal/types"
 
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
 
@@ -155,50 +156,7 @@ func getDirNames(path string) ([]string, error) {
 	return dirs, nil
 }
 
-func install(cmd *cobra.Command, args []string) {
-	packageName := args[0]
-	packages, err := searchPackages(packageName, targetSystem)
-	if err != nil {
-		fmt.Println("Error: ", err)
-		return
-	}
-
-	filteredPkgs := filterAndPrioritizePackages(packages, showAll)
-
-	if len(filteredPkgs) == 0 {
-		fmt.Println("No packages found")
-		return
-	}
-
-	selectedPkg, err := tui.ShowPackageSelector(filteredPkgs)
-	if err != nil {
-		fmt.Println("Failed to select package: ", err)
-		return
-	}
-
-	// Scan the apps directory to ask where to add this package
-	folders, err := getDirNames(NIX_APPS_DIR)
-	if err != nil {
-		fmt.Println("Failed to read nix modules directory: ", err)
-		return
-	}
-
-	selectedFolder, err := tui.ShowStringListSelector("Select folders", folders)
-	if err != nil {
-		fmt.Println("Failed to select a folder: ", err)
-		return
-	}
-
-	fullModulePath := filepath.Join(NIX_APPS_DIR, selectedFolder)
-
-	// TODO: We should also rescan the selected folder to see if any nested dirs exist and reprompt - do later
-
-	data, err := os.ReadFile(NIX_PKGS_MODULE_TEMPLATE)
-	if err != nil {
-		fmt.Println("Error reading template file: ", err)
-		return
-	}
-
+func replacePkgContent(data []byte, selectedPkg *types.Package) string {
 	var linuxPackage string
 	var darwinPackage string
 	var homebrewPackage string
@@ -213,9 +171,72 @@ func install(cmd *cobra.Command, args []string) {
 		}
 	}
 	replacer := strings.NewReplacer("LinuxPackage", linuxPackage, "DarwinPackage", darwinPackage, "HomebrewPackage", homebrewPackage, "PackageName", selectedPkg.PName, "PackageDescription", selectedPkg.Description)
-	modulePackage := replacer.Replace(string(data))
+	return replacer.Replace(string(data))
+}
 
-	// TODO: Ask for if they want to modify the package themselves, then open using $EDITOR
+func initialSetup() {
+	// TODO: make this also check the default.nix for lib dir
+	// make it also add the registration for the lib functions in the flake.nix
+	libPath := filepath.Join(NIXOS_ROOT, "lib")
+	mkAppPath := filepath.Join(libPath, "mkApp.nix")
+
+	err := os.MkdirAll(libPath, 0o755)
+	if err != nil {
+		fmt.Printf("Error creating lib directory: %v\n", err)
+		return
+	}
+
+	if _, err := os.Stat(mkAppPath); err == nil {
+		return
+	}
+	data, err := os.ReadFile(NIX_PKGS_MODULE_TEMPLATE)
+	if err != nil {
+		fmt.Printf("Error reading template file: %v\n", err)
+		return
+	}
+
+	err = os.WriteFile(mkAppPath, data, 0o644)
+	if err != nil {
+		fmt.Printf("Error writing mkApp.nix: %v\n", err)
+		return
+	}
+	fmt.Println("Created lib/mkApp.nix from template")
+}
+
+func install(cmd *cobra.Command, args []string) {
+	initialSetup()
+
+	packageName := args[0]
+	packages, err := searchPackages(packageName, targetSystem)
+	if err != nil {
+		fmt.Println("Error: ", err)
+		return
+	}
+
+	filteredPkgs := filterAndPrioritizePackages(packages, showAll)
+
+	if len(filteredPkgs) == 0 {
+		fmt.Println("No packages found")
+		return
+	}
+
+	pkgOptions := make([]huh.Option[*types.Package], len(filteredPkgs))
+	for i := range filteredPkgs {
+		pkg := &filteredPkgs[i]
+		label := fmt.Sprintf("%s (%s) - %s", pkg.PName, pkg.Version, pkg.System)
+		pkgOptions[i] = huh.NewOption(label, pkg)
+	}
+
+	// Scan the apps directory to ask where to add this package
+	folders, err := getDirNames(NIX_APPS_DIR)
+	if err != nil {
+		fmt.Println("Failed to read nix modules directory: ", err)
+		return
+	}
+
+	folderOptions := huh.NewOptions(folders...)
+
+	// TODO: We should also rescan the selected folder to see if any nested dirs exist and reprompt - do later
 
 	hostDirs, err := getDirNames(NIX_HOSTS_DIR)
 	if err != nil {
@@ -223,17 +244,62 @@ func install(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	selectedHosts, err := tui.ShowMultiStringListSelector("Select the hosts where this package should be enabled: ", hostDirs)
-	// selectedHost, err := tui.ShowStringListSelector("Select a host to install on: ", hostDirs)
+	hostOptions := huh.NewOptions(hostDirs...)
+
+	var selectedPkg *types.Package
+	var selectedFolder string
+	var selectedHosts []string
+	var openAfterWriting bool
+
+	err = huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[*types.Package]().
+				Title("Select a package to install").
+				Options(pkgOptions...).
+				Value(&selectedPkg),
+		),
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select a folder").
+				Options(folderOptions...).
+				Value(&selectedFolder),
+		),
+		huh.NewGroup(
+			huh.NewMultiSelect[string]().
+				Title("Select hosts").
+				Description("Space to toggle, Enter to confirm").
+				Options(hostOptions...).
+				Value(&selectedHosts),
+		),
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Do you want to edit the module after adding it?").
+				Value(&openAfterWriting),
+		),
+	).Run()
 	if err != nil {
-		fmt.Println("Failed to select a host: ", err)
+		fmt.Println("Form cancelled or error: ", err)
+		return
+	}
+
+	data, err := os.ReadFile(NIX_PKGS_MODULE_TEMPLATE)
+	if err != nil {
+		fmt.Println("Error reading template file: ", err)
+		return
+	}
+
+	modulePackage := replacePkgContent(data, selectedPkg)
+	modulePath := filepath.Join(NIX_APPS_DIR, selectedFolder)
+	moduleFilePath := filepath.Join(modulePath, packageName) + ".nix"
+
+	err = os.WriteFile(moduleFilePath, []byte(modulePackage), 0o644)
+	if err != nil {
+		fmt.Println("could not write file: ", err)
 		return
 	}
 
 	for _, host := range selectedHosts {
-
 		fullHostPath := filepath.Join(NIX_HOSTS_DIR, host, "configuration.nix")
-
 		data, err = os.ReadFile(fullHostPath)
 		if err != nil {
 			fmt.Println("Could not read the host configuration.nix, error: ", err)
@@ -251,18 +317,27 @@ func install(cmd *cobra.Command, args []string) {
 			content = createCategory(content, selectedFolder, selectedPkg.PName)
 		}
 
-		err = os.WriteFile(filepath.Join(fullModulePath, packageName)+".nix", []byte(modulePackage), 0o644)
-		if err != nil {
-			fmt.Println("could not write file: ", err)
-			return
-		}
-
 		err = os.WriteFile(fullHostPath, []byte(content), 0o644)
 		if err != nil {
 			fmt.Println("could not write file: ", err)
 			return
 		}
 		fmt.Printf("\nDone! please run: nixos-rebuild switch --flake %s#%s", NIXOS_ROOT, host)
+	}
+
+	if openAfterWriting {
+		editor := os.Getenv("EDITOR")
+		if editor == "" {
+			editor = "nvim"
+		}
+		editorCmd := exec.Command(editor, moduleFilePath)
+		editorCmd.Stdin = os.Stdin
+		editorCmd.Stdout = os.Stdout
+		editorCmd.Stderr = os.Stderr
+		err := editorCmd.Run()
+		if err != nil {
+			fmt.Println("Error opening editor: ", err)
+		}
 	}
 }
 
