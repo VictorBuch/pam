@@ -1,7 +1,7 @@
 package main
 
 import (
-	"nap/cmd"
+	"pam/cmd"
 )
 
 func main() {

@@ -33,7 +33,7 @@
   };
 
   # Pre-commit Hooks
-  pre-commit.hooks = {
+  git-hooks.hooks = {
     gofmt = {
       enable = true;
       name = "gofmt";

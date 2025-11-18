@@ -6,10 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 
-	"nap/internal/types"
+	"pam/internal"
+	"pam/internal/types"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -18,14 +18,10 @@ import (
 type SearchResult map[string]types.Package
 
 const (
-	NIXOS_ROOT               = "/Users/victorbuch/serenityOs"
 	NIX_PKGS_MODULE_TEMPLATE = "./mkApp.txt"
 )
 
-var (
-	NIX_APPS_DIR  = filepath.Join(NIXOS_ROOT, "modules", "apps")
-	NIX_HOSTS_DIR = filepath.Join(NIXOS_ROOT, "hosts")
-)
+var FLAKE_ROOT, NIX_APPS_DIR, NIX_HOSTS_DIR string
 
 var (
 	showAll         bool
@@ -175,12 +171,38 @@ func replacePkgContent(data []byte, selectedPkg *types.Package) string {
 }
 
 func initialSetup() {
+	cfg, err := internal.LoadConfig()
+	if err != nil {
+		fmt.Printf("error: %v", err)
+		return
+	}
+
+	if err := cfg.Validate(); err != nil {
+		var newFlakePath string
+		err = huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("No Flake path, please provide one!").
+					Value(&newFlakePath),
+			),
+		).Run()
+		if err != nil {
+			fmt.Println("Form cancelled or error: ", err)
+			return
+		}
+		cfg.FlakePath = newFlakePath
+		cfg.Save()
+	}
+	FLAKE_ROOT = cfg.FlakePath
+	NIX_HOSTS_DIR = filepath.Join(FLAKE_ROOT, cfg.DefaultHostDir)
+	NIX_APPS_DIR = filepath.Join(FLAKE_ROOT, cfg.DefaultModuleDir)
+
 	// TODO: make this also check the default.nix for lib dir
 	// make it also add the registration for the lib functions in the flake.nix
-	libPath := filepath.Join(NIXOS_ROOT, "lib")
+	libPath := filepath.Join(FLAKE_ROOT, "lib")
 	mkAppPath := filepath.Join(libPath, "mkApp.nix")
 
-	err := os.MkdirAll(libPath, 0o755)
+	err = os.MkdirAll(libPath, 0o755)
 	if err != nil {
 		fmt.Printf("Error creating lib directory: %v\n", err)
 		return
@@ -322,7 +344,7 @@ func install(cmd *cobra.Command, args []string) {
 			fmt.Println("could not write file: ", err)
 			return
 		}
-		fmt.Printf("\nDone! please run: nixos-rebuild switch --flake %s#%s", NIXOS_ROOT, host)
+		fmt.Printf("\nDone! please run: nixos-rebuild switch --flake %s#%s", FLAKE_ROOT, host)
 	}
 
 	if openAfterWriting {
