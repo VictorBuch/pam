@@ -1,4 +1,4 @@
-# PAM (Package Manager)
+# PAM (Package Manager) - Work in progress!
 
 A fast, interactive CLI tool for searching and managing Nix packages across multiple NixOS/nix-darwin machines.
 
