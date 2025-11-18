@@ -1,0 +1,27 @@
+# PAM Configuration File Example
+# Copy this file to ~/.config/pam/config.yaml and customize it
+# Location: ~/.config/pam/config.yaml
+
+# Path to your NixOS/nix-darwin flake (REQUIRED)
+# This is where your flake.nix file is located
+# Supports tilde (~) expansion for home directory
+flake_path: "~/.nixos"
+
+# Default system architecture for package search (OPTIONAL)
+# If not specified, nix search will return packages for all systems
+# Common values:
+#   - "x86_64-linux"    (64-bit Linux)
+#   - "aarch64-linux"   (ARM Linux)
+#   - "x86_64-darwin"   (Intel macOS)
+#   - "aarch64-darwin"  (Apple Silicon macOS)
+default_system: "x86_64-linux"
+
+# Directory for app modules relative to flake_path (OPTIONAL)
+# Default: "modules/apps"
+# This is where PAM will create your package module files
+default_module_dir: "modules/apps"
+
+# Directory for host configurations relative to flake_path (OPTIONAL)
+# Default: "hosts"
+# This is where your host configuration.nix files are located
+default_host_dir: "hosts"
