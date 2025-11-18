@@ -177,22 +177,6 @@ func initialSetup() {
 		return
 	}
 
-	if err := cfg.Validate(); err != nil {
-		var newFlakePath string
-		err = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("No Flake path, please provide one!").
-					Value(&newFlakePath),
-			),
-		).Run()
-		if err != nil {
-			fmt.Println("Form cancelled or error: ", err)
-			return
-		}
-		cfg.FlakePath = newFlakePath
-		cfg.Save()
-	}
 	FLAKE_ROOT = cfg.FlakePath
 	NIX_HOSTS_DIR = filepath.Join(FLAKE_ROOT, cfg.DefaultHostDir)
 	NIX_APPS_DIR = filepath.Join(FLAKE_ROOT, cfg.DefaultModuleDir)

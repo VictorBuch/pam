@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/huh"
 	"gopkg.in/yaml.v3"
 )
 
@@ -46,6 +47,36 @@ func (c *Config) Save() error {
 	return nil
 }
 
+func interactiveSetup(cfg *Config) error {
+	fmt.Println("\n🔧 Welcome to pam setup! Let's configure your flake path.")
+
+	var flakePath string
+	var system string
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Title("Where is your NixOs/nix-darwin flake located?").Placeholder("~/nixos").Value(&flakePath).Validate(
+				func(s string) error {
+					if s == "" {
+						return fmt.Errorf("Flake path cannot be empty")
+					}
+					return nil
+				},
+			),
+		),
+		huh.NewGroup(
+			huh.NewInput().Title("Input your system architecture").Placeholder("x86_64-linux or aarch64-darwin etc...").Value(&system),
+		),
+	)
+	err := form.Run()
+	if err != nil {
+		return err
+	}
+	cfg.FlakePath = flakePath
+	cfg.DefaultSystem = system
+	return nil
+}
+
 func Default() *Config {
 	return &Config{
 		FlakePath:        "",
@@ -82,13 +113,12 @@ func getOrCreateConfig(path string) (*Config, error) {
 			}
 
 			defaults := Default()
-			yaml, err := yaml.Marshal(defaults)
+			err = interactiveSetup(defaults)
 			if err != nil {
 				return nil, err
 			}
-			err = os.WriteFile(path, []byte(yaml), 0o644)
+			err = defaults.Save()
 			if err != nil {
-				fmt.Printf("Error writing mkApp.nix: %v\n", err)
 				return nil, err
 			}
 		} else {
@@ -115,7 +145,25 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if config.FlakePath == "" {
+		err = interactiveSetup(config)
+		if err != nil {
+			return nil, err
+		}
+		err = config.Save()
+		if err != nil {
+			return nil, fmt.Errorf("failed to save config: %w",
+				err)
+		}
+	}
+
 	config.FlakePath = expandPath(config.FlakePath)
+	err = config.Validate()
+	if err != nil {
+		return nil, err
+	}
+
 	return config, nil
 }
 
