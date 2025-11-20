@@ -72,15 +72,24 @@
     '';
 
     test.exec = ''
-      echo "Running tests..."
-      go test ./... -v
+      ./test.sh
     '';
 
     test-coverage.exec = ''
-      echo "Running tests with coverage..."
-      go test ./... -coverprofile=coverage.out
+      echo "Generating coverage report..."
+      go test -coverprofile=coverage.out ./internal/...
+      go tool cover -func=coverage.out | grep total
       go tool cover -html=coverage.out -o coverage.html
-      echo "Coverage report generated: coverage.html"
+      echo "Coverage report: coverage.html"
+    '';
+
+    test-package.exec = ''
+      if [ -z "$1" ]; then
+        echo "Usage: test-package <package-name>"
+        echo "Example: test-package nixconfig"
+        exit 1
+      fi
+      go test -v ./internal/$1
     '';
 
     lint.exec = ''
@@ -133,8 +142,9 @@
     echo "🛠️  Custom Scripts:"
     echo "  dev              - Run your Go application"
     echo "  build            - Build binary to bin/app"
-    echo "  test             - Run all tests"
+    echo "  test             - Run all tests (uses test.sh)"
     echo "  test-coverage    - Generate coverage report"
+    echo "  test-package     - Test specific package (e.g., test-package nixconfig)"
     echo "  lint             - Run golangci-lint"
     echo "  mod-tidy         - Tidy go.mod dependencies"
     echo "  mod-init         - Initialize new Go module"

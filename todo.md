@@ -1,37 +1,72 @@
-# Road to v1
+# PAM - Road to v1
 
-## Completed Features ✅
+## 🎯 What's Needed for v1
 
-- [x] Make the UX better
-- [x] Make the host selection a multiple choice selection
-- [x] Ask the user if they want to edit the new module once finished with creation
-- [x] Migrate to huh for better form handling
+### Critical: Code Refactoring (Make tests pass)
 
-## In Progress Features 🚧
+**Status:** 51 tests written → Need implementation
 
-- [ ] Support having a config file like other great software in /home/<usr>/.config/nap/config (YAML or TOML recommended - could configure flake path, default editor, etc.)
-- [ ] Support searching multiple system architectures (e.g., both x86_64-linux and aarch64-darwin)
-- [ ] Complete initial setup: lib/mkApp.nix integration
-  - [x] Create lib/mkApp.nix if missing
-  - [ ] Create/update lib/default.nix to export mkApp (install.go:178-179)
-  - [ ] Check flake.nix for lib registration
-  - [ ] Add lib to flake outputs if missing
-- [ ] Rescan selected folder to see if nested dirs exist and reprompt (install.go:239)
+Implement these 5 packages (see `IMPLEMENTATION_CHECKLIST.md` for details):
 
-## Code Quality TODOs 🔧
+1. **`internal/assets/assets.go`** - Embed templates, fix hardcoded path FIXME
+2. **`internal/nixconfig/editor.go`** - Robust config parsing with regex
+3. **`internal/search/search.go`** - Package search logic
+4. **`internal/ui/forms.go`** - UI helper functions
+5. **`internal/setup/setup.go`** - Initialization logic
 
-- [x] Fix critical bug: content variable in install loop (was using template instead of host config)
-- [x] Move moduleFilePath write outside of host loop
-- [x] Add newlines to error messages
-- [x] Fix file permission octal notation
-- [ ] Make NIXOS_ROOT configurable (env var or config file)
-- [ ] Add unit tests for string manipulation functions
-- [ ] Better error handling (use errors.Is/As)
+Then: 6. **Refactor `cmd/install.go`** - Use new packages (418 → ~150 lines)
 
-## Future Enhancements 💡
+**Run:** `test` to see what needs implementing
 
-- [ ] Add --dry-run flag to preview changes
-- [ ] Support removing/disabling packages
-- [ ] Add package search with filters (category, license, etc.)
+**Goal:** All 51 tests passing, >70% coverage
+
+---
+
+### Optional for v1: Lib Setup Completion
+
+- [ ] Create/update `lib/default.nix` to export mkApp
+- [ ] Check `flake.nix` for lib registration
+- [ ] Add lib to flake outputs if missing
+
+---
+
+## ✅ Already Complete
+
+**Core Features:**
+
+- [x] Interactive UX with huh forms
+- [x] Multi-host selection
+- [x] Config file support (~/.config/pam/config)
+- [x] Folder recursion/selection
+- [x] Optional editor opening after install
+
+**Code Quality:**
+
+- [x] Critical bugs fixed
+- [x] File permissions corrected
+- [x] Configurable paths (no hardcoded NIXOS_ROOT)
+
+**Testing & Documentation:**
+
+- [x] 51 tests written (TDD approach)
+- [x] 4 feature proposals (`feats/` directory)
+- [x] Implementation guides (TESTING.md, IMPLEMENTATION_CHECKLIST.md)
+- [x] Test infrastructure (test.sh, testdata/, devenv scripts)
+
+---
+
+## 🚀 Post-v1 Future Enhancements
+
+**New Features:**
+
+- [ ] Multi-architecture search (search x86_64-linux + aarch64-darwin simultaneously)
+- [ ] Package removal/disabling command
+- [ ] Dry-run mode (`--dry-run` flag)
+- [ ] Advanced search filters (category, license, etc.)
 - [ ] Generate flake.lock diff after install
-- [ ] Add rollback functionality
+- [ ] Rollback functionality
+
+**Code Quality:**
+
+- [ ] Structured error handling (`internal/errors` package)
+- [ ] Better error messages with context
