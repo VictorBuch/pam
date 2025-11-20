@@ -12,11 +12,13 @@ import (
 	"pam/internal/types"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/spf13/cobra"
 )
 
 type SearchResult map[string]types.Package
 
+// FIXME: i think this will break when distributed since the file will not exist on other peoples computers
 const (
 	NIX_PKGS_MODULE_TEMPLATE = "./mkApp.txt"
 )
@@ -152,6 +154,52 @@ func getDirNames(path string) ([]string, error) {
 	return dirs, nil
 }
 
+func selectFolderRecursively(path string) (string, error) {
+	currentPath := ""
+	for {
+		fullPath := filepath.Join(path, currentPath)
+		subdirs, err := getDirNames(fullPath)
+		if err != nil {
+			return "", err
+		}
+		if len(subdirs) == 0 {
+			if currentPath == "" {
+				return "", fmt.Errorf("no folders found in %s", path)
+			}
+			return currentPath, nil
+		}
+
+		var options []huh.Option[string]
+		title := "Select a folder"
+		if currentPath != "" {
+			title = fmt.Sprintf("Select a folder (current: %s)", currentPath)
+			options = append(options, huh.NewOption("Use this folder", ""))
+		}
+		for _, dir := range subdirs {
+			options = append(options, huh.NewOption(dir, dir))
+		}
+
+		var selected string
+		err = huh.NewForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title(title).
+					Options(options...).
+					Value(&selected),
+			),
+		).Run()
+		if err != nil {
+			return "", err
+		}
+
+		if selected == "" {
+			return currentPath, nil
+		}
+		currentPath = filepath.Join(currentPath, selected)
+
+	}
+}
+
 func replacePkgContent(data []byte, selectedPkg *types.Package) string {
 	var linuxPackage string
 	var darwinPackage string
@@ -213,9 +261,23 @@ func install(cmd *cobra.Command, args []string) {
 	initialSetup()
 
 	packageName := args[0]
-	packages, err := searchPackages(packageName, targetSystem)
+
+	var packages SearchResult
+	var searchErr error
+
+	err := spinner.New().
+		Title("Searching nix pkgs...").
+		Action(func() {
+			packages, searchErr = searchPackages(packageName, targetSystem)
+		}).
+		Run()
 	if err != nil {
-		fmt.Println("Error: ", err)
+		fmt.Println("Error running spinner: ", err)
+		return
+	}
+
+	if searchErr != nil {
+		fmt.Println("Error: ", searchErr)
 		return
 	}
 
@@ -233,17 +295,6 @@ func install(cmd *cobra.Command, args []string) {
 		pkgOptions[i] = huh.NewOption(label, pkg)
 	}
 
-	// Scan the apps directory to ask where to add this package
-	folders, err := getDirNames(NIX_APPS_DIR)
-	if err != nil {
-		fmt.Println("Failed to read nix modules directory: ", err)
-		return
-	}
-
-	folderOptions := huh.NewOptions(folders...)
-
-	// TODO: We should also rescan the selected folder to see if any nested dirs exist and reprompt - do later
-
 	hostDirs, err := getDirNames(NIX_HOSTS_DIR)
 	if err != nil {
 		fmt.Println("Failed to read nix modules directory: ", err)
@@ -253,7 +304,6 @@ func install(cmd *cobra.Command, args []string) {
 	hostOptions := huh.NewOptions(hostDirs...)
 
 	var selectedPkg *types.Package
-	var selectedFolder string
 	var selectedHosts []string
 	var openAfterWriting bool
 
@@ -263,13 +313,19 @@ func install(cmd *cobra.Command, args []string) {
 				Title("Select a package to install").
 				Options(pkgOptions...).
 				Value(&selectedPkg),
-		),
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Select a folder").
-				Options(folderOptions...).
-				Value(&selectedFolder),
-		),
+		)).Run()
+	if err != nil {
+		fmt.Println("Form cancelled or error: ", err)
+		return
+	}
+
+	selectedFolder, err := selectFolderRecursively(NIX_APPS_DIR)
+	if err != nil {
+		fmt.Println("Selecting folders failed, error: ", err)
+		return
+	}
+
+	err = huh.NewForm(
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
 				Title("Select hosts").
