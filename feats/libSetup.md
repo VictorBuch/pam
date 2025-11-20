@@ -1,5 +1,8 @@
 # Feature: Complete Library Setup
 
+## Status
+⚠️ **Partially Implemented** - Basic setup works, flake integration manual
+
 ## Goal
 
 Automatically set up the `lib` directory infrastructure so that `lib/mkApp.nix` is properly integrated into your NixOS flake and can be imported by generated modules.
@@ -604,6 +607,39 @@ Edit `default.nix` to add your own helper functions.
 1. Test with standard flake structure
 2. Test with unusual structures
 3. Test safety measures (backups, validation)
+
+---
+
+## Implementation Notes
+
+**What's Done:**
+- ✅ `internal/setup` package created with Initializer
+- ✅ `EnsureLibDirectory()` creates lib/ if missing
+- ✅ `EnsureMkAppNix()` writes mkApp.nix template
+- ✅ Setup runs automatically on `pam install`
+- ✅ 8 tests passing covering all setup scenarios
+
+**What's NOT Done (Manual Steps Required):**
+- ❌ Auto-create `lib/default.nix`
+- ❌ Auto-update `flake.nix` to register lib
+- ❌ Verify flake integration
+
+**Why Not Automated:**
+- Flake manipulation is complex and risky
+- Users may have custom flake structures
+- Better to provide clear manual instructions
+- Setup wizard (`pam init`) could be added in v2
+
+**Current Workaround:**
+Users need to manually ensure their flake.nix includes:
+```nix
+outputs = { self, nixpkgs, ... }: {
+  lib = import ./lib;
+  # ... rest of outputs
+};
+```
+
+And their modules should import mkApp from the flake's lib attribute.
 
 ---
 

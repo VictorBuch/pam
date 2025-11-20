@@ -1,7 +1,7 @@
 # Improved Nix Configuration Parsing
 
 ## Status
-Proposed
+✅ **Implemented** - See `internal/nixconfig/`
 
 ## Problem
 Current Nix configuration manipulation uses fragile string matching that's prone to breakage:
@@ -167,3 +167,45 @@ High - Critical for reliability and maintainability
 - Currently no error messages if config manipulation fails
 - Hard to debug when things go wrong
 - Users might have different formatting styles
+
+---
+
+## Implementation Notes
+
+**Completed:** `internal/nixconfig/` package created with:
+
+- ✅ `Config` struct encapsulates configuration content
+- ✅ `NewConfig()` constructor (not a method - proper Go pattern)
+- ✅ All methods use regex for flexible whitespace matching
+- ✅ `CategoryExists()` checks for sections
+- ✅ `PackageExistsInCategory()` finds packages within sections
+- ✅ `EnablePackage()` toggles package enable flags
+- ✅ `AddPackageToCategory()` adds packages to existing sections
+- ✅ `CreateCategory()` creates new sections
+- ✅ `AddOrEnablePackage()` high-level convenience method
+- ✅ `EnsureAppsSectionExists()` creates apps section if missing
+- ✅ 9 tests passing (all whitespace variations covered)
+- ✅ Integrated into `cmd/install.go` (lines 249-268)
+
+**Actual API:**
+```go
+// Config encapsulates configuration content
+type Config struct {
+    content string
+}
+
+func NewConfig(content string) *Config
+func (c *Config) Content() string
+func (c *Config) CategoryExists(category string) bool
+func (c *Config) PackageExistsInCategory(category, pkg string) bool
+func (c *Config) EnablePackage(pkg string) bool
+func (c *Config) AddPackageToCategory(category, pkg string) error
+func (c *Config) CreateCategory(category, pkg string) error
+func (c *Config) AddOrEnablePackage(category, pkg string) error
+func (c *Config) EnsureAppsSectionExists() error
+```
+
+**Key Differences from Proposal:**
+- Named `Config` instead of `Editor` (simpler, clearer)
+- All methods modify `c.content` directly (stateful pattern)
+- `EnsureAppsSectionExists()` added to handle missing apps section

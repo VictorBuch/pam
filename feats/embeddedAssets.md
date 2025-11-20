@@ -1,7 +1,7 @@
 # Embedded Assets / Template System
 
 ## Status
-Proposed
+✅ **Implemented** - See `internal/assets/`
 
 ## Problem
 Currently facing the hardcoded path issue (FIXME on line 21-23 in cmd/install.go):
@@ -111,3 +111,29 @@ High - Fixes critical FIXME that prevents distribution
 - Could add template validation at compile time
 - Could support template variables/functions with `text/template` package
 - Could cache rendered templates if performance becomes an issue
+
+---
+
+## Implementation Notes
+
+**Completed:** `internal/assets/` package created with:
+
+- ✅ Embedded `packageTemplate.nix` and `mkApp.nix` using `//go:embed`
+- ✅ `FillPackageTemplate()` renders package templates with string replacement
+- ✅ `GetPackageTemplate()` and `GetMkApp()` expose embedded templates
+- ✅ Handles empty values and double-space cleanup
+- ✅ 6 tests passing (including edge cases)
+- ✅ Integrated into `cmd/install.go` (line 238) and `internal/setup` (line 31)
+- ✅ Binary is now distribution-ready (no external file dependencies)
+
+**Actual API:**
+```go
+// FillPackageTemplate fills package template with data
+func FillPackageTemplate(pkg *types.Package, useHomebrew bool) string
+
+// GetPackageTemplate returns the embedded package template
+func GetPackageTemplate() string
+
+// GetMkApp returns the embedded mkApp template
+func GetMkApp() string
+```
