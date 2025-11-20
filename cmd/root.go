@@ -5,7 +5,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "nap",
+	Use:   "pam",
 	Short: "This is a tool to install nix packages the easy way.",
 }
 
