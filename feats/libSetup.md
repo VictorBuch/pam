@@ -1,7 +1,7 @@
 # Feature: Complete Library Setup
 
 ## Status
-⚠️ **Partially Implemented** - Basic setup works, flake integration manual
+✅ **IMPLEMENTED** - v0.1.0 - Full library setup with smart merge and detection
 
 ## Goal
 
@@ -610,36 +610,51 @@ Edit `default.nix` to add your own helper functions.
 
 ---
 
-## Implementation Notes
+## Implementation Summary (v0.1.0)
 
-**What's Done:**
-- ✅ `internal/setup` package created with Initializer
+**Fully Implemented Features:**
+
+### Automatic Setup
+- ✅ `internal/setup` package with comprehensive Initializer
 - ✅ `EnsureLibDirectory()` creates lib/ if missing
 - ✅ `EnsureMkAppNix()` writes mkApp.nix template
+- ✅ `EnsureLibDefault()` creates/updates lib/default.nix with smart merge
 - ✅ Setup runs automatically on `pam install`
-- ✅ 8 tests passing covering all setup scenarios
+- ✅ 18+ tests passing covering all scenarios
 
-**What's NOT Done (Manual Steps Required):**
-- ❌ Auto-create `lib/default.nix`
-- ❌ Auto-update `flake.nix` to register lib
-- ❌ Verify flake integration
+### Smart lib/default.nix Handling
+- ✅ Creates from template if missing
+- ✅ Detects if mkApp is already exported
+- ✅ Interactive prompt to add mkApp to existing files
+- ✅ Safe modification with validation (won't break complex structures)
+- ✅ Preserves user customizations
 
-**Why Not Automated:**
-- Flake manipulation is complex and risky
-- Users may have custom flake structures
-- Better to provide clear manual instructions
-- Setup wizard (`pam init`) could be added in v2
+### Flake Integration Detection
+- ✅ Detects common flake.nix patterns:
+  - `lib = import ./lib`
+  - `customLib = import ./lib { lib = nixpkgs.lib; }`
+  - `inherit (customLib) mkApp` in specialArgs
+- ✅ Prints detailed manual setup instructions when integration not detected
+- ✅ Gracefully handles edge cases (no flake, custom structures)
 
-**Current Workaround:**
-Users need to manually ensure their flake.nix includes:
-```nix
-outputs = { self, nixpkgs, ... }: {
-  lib = import ./lib;
-  # ... rest of outputs
-};
-```
+### Code Quality
+- ✅ `internal/setup/nixparser.go` - Nix file parsing utilities
+- ✅ `internal/ui/confirm.go` - Interactive user confirmations
+- ✅ Comprehensive test coverage
+- ✅ Clean error handling with actionable messages
 
-And their modules should import mkApp from the flake's lib attribute.
+**Implementation Approach:**
+- **Automated:** lib/default.nix creation and smart merge
+- **Detection only:** flake.nix integration (provides manual instructions)
+- **Rationale:** Flake structures vary too much for safe automation
+- **User Experience:** Interactive confirmations + clear guidance
+
+**Files:**
+- `internal/setup/setup.go` - Main setup logic
+- `internal/setup/nixparser.go` - Nix parsing helpers
+- `internal/setup/setup_test.go` - Comprehensive tests
+- `internal/ui/confirm.go` - User interaction helpers
+- `internal/assets/templates/libDefault.nix` - Template file
 
 ---
 

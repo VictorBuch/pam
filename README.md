@@ -1,6 +1,11 @@
-# PAM (Package Manager) - Work in progress!
+# PAM - Package Application Manager
 
-A fast, interactive CLI tool for searching and managing Nix packages across multiple NixOS/nix-darwin machines.
+[![Release](https://img.shields.io/github/v/release/VictorBuch/pam)](https://github.com/VictorBuch/pam/releases)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/VictorBuch/pam)](go.mod)
+[![Build Status](https://github.com/VictorBuch/pam/actions/workflows/go.yml/badge.svg)](https://github.com/VictorBuch/pam/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+A fast, interactive CLI tool for searching and managing Nix packages across multiple NixOS/nix-darwin machines with automatic module generation.
 
 ## ✨ Features
 
@@ -20,7 +25,43 @@ A fast, interactive CLI tool for searching and managing Nix packages across mult
 
 ## 🚀 Installation
 
-### From Source
+### Download Pre-built Binary (Recommended)
+
+Download the latest release for your platform from the [releases page](https://github.com/VictorBuch/pam/releases):
+
+**Linux (x86_64):**
+
+```bash
+wget https://github.com/VictorBuch/pam/releases/latest/download/pam_0.1.0_linux_amd64.tar.gz
+tar -xzf pam_0.1.0_linux_amd64.tar.gz
+sudo mv pam /usr/local/bin/
+```
+
+**Linux (ARM64):**
+
+```bash
+wget https://github.com/VictorBuch/pam/releases/latest/download/pam_0.1.0_linux_arm64.tar.gz
+tar -xzf pam_0.1.0_linux_arm64.tar.gz
+sudo mv pam /usr/local/bin/
+```
+
+**macOS (Intel):**
+
+```bash
+wget https://github.com/VictorBuch/pam/releases/latest/download/pam_0.1.0_darwin_amd64.tar.gz
+tar -xzf pam_0.1.0_darwin_amd64.tar.gz
+sudo mv pam /usr/local/bin/
+```
+
+**macOS (Apple Silicon):**
+
+```bash
+wget https://github.com/VictorBuch/pam/releases/latest/download/pam_0.1.0_darwin_arm64.tar.gz
+tar -xzf pam_0.1.0_darwin_arm64.tar.gz
+sudo mv pam /usr/local/bin/
+```
+
+### From Source (For Development)
 
 ```bash
 git clone https://github.com/VictorBuch/pam.git
@@ -123,10 +164,11 @@ pam install firefox --brew
 ## 🏗️ How It Works
 
 1. **Package Search**: Uses `nix search` to find packages in nixpkgs
-2. **Module Generation**: Creates Nix modules based on the `mkApp.txt` template
-3. **Configuration Update**: Automatically updates `configuration.nix` in selected hosts
-4. **Category Management**: Organizes packages into categories (e.g., development, utilities)
-5. **Multi-System Support**: Handles both Linux and Darwin packages intelligently
+2. **Library Setup**: Automatically sets up `lib/` directory with `mkApp` helper function
+3. **Module Generation**: Creates Nix modules based on embedded templates
+4. **Configuration Update**: Automatically updates `configuration.nix` in selected hosts
+5. **Category Management**: Organizes packages into categories (e.g., development, utilities)
+6. **Multi-System Support**: Handles both Linux and Darwin packages intelligently
 
 ### Project Structure
 
@@ -150,8 +192,19 @@ Your Nix flake should follow this structure:
         └── configuration.nix
 ```
 
-## Acknowledgments
+## 📚 Documentation
+
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and changes
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
 
 - Built with [Cobra](https://github.com/spf13/cobra) for CLI framework
 - UI powered by [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Huh](https://github.com/charmbracelet/huh)
 - YAML parsing with [gopkg.in/yaml.v3](https://gopkg.in/yaml.v3)
+- Automated releases with [GoReleaser](https://goreleaser.com/)
+
+**Made for the NixOS community**
