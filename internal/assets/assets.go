@@ -13,6 +13,9 @@ var packageTemplate string
 //go:embed templates/mkApp.nix
 var mkApp string
 
+//go:embed templates/libDefault.nix
+var libDefault string
+
 func FillPackageTemplate(pkg *types.Package, useHomebrew bool) string {
 	var linuxPackage string
 	var darwinPackage string
@@ -40,4 +43,8 @@ func GetPackageTemplate() string {
 
 func GetMkApp() string {
 	return mkApp
+}
+
+func GetLibDefault() string {
+	return libDefault
 }

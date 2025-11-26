@@ -301,6 +301,351 @@ func TestNewInitializer(t *testing.T) {
 	}
 }
 
+// Tests for lib/default.nix functionality
+
+func TestInitializer_EnsureLibDefault_CreateWhenMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := &internal.Config{
+		FlakePath: tmpDir,
+	}
+
+	init := NewInitializer(cfg)
+
+	// Create lib directory
+	err := os.MkdirAll(filepath.Join(tmpDir, "lib"), 0o755)
+	if err != nil {
+		t.Fatalf("Failed to create lib directory: %v", err)
+	}
+
+	// Ensure lib/default.nix
+	err = init.EnsureLibDefault()
+	if err != nil {
+		t.Fatalf("EnsureLibDefault() error = %v", err)
+	}
+
+	// Verify lib/default.nix was created
+	libDefaultPath := filepath.Join(tmpDir, "lib", "default.nix")
+	if _, err := os.Stat(libDefaultPath); os.IsNotExist(err) {
+		t.Error("lib/default.nix was not created")
+	}
+
+	// Verify file content has mkApp
+	content, err := os.ReadFile(libDefaultPath)
+	if err != nil {
+		t.Fatalf("Failed to read lib/default.nix: %v", err)
+	}
+
+	if !strings.Contains(string(content), "mkApp") {
+		t.Error("lib/default.nix does not contain mkApp export")
+	}
+}
+
+func TestInitializer_EnsureLibDefault_SkipWhenHasMkApp(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := &internal.Config{
+		FlakePath: tmpDir,
+	}
+
+	init := NewInitializer(cfg)
+
+	// Create lib directory and default.nix with mkApp
+	libPath := filepath.Join(tmpDir, "lib")
+	err := os.MkdirAll(libPath, 0o755)
+	if err != nil {
+		t.Fatalf("Failed to create lib directory: %v", err)
+	}
+
+	existingContent := `{ lib }:
+{
+  mkApp = import ./mkApp.nix { inherit lib; };
+  customFunction = x: x + 1;
+}`
+
+	libDefaultPath := filepath.Join(libPath, "default.nix")
+	err = os.WriteFile(libDefaultPath, []byte(existingContent), 0o644)
+	if err != nil {
+		t.Fatalf("Failed to create lib/default.nix: %v", err)
+	}
+
+	// Run EnsureLibDefault
+	err = init.EnsureLibDefault()
+	if err != nil {
+		t.Fatalf("EnsureLibDefault() error = %v", err)
+	}
+
+	// Verify content unchanged
+	newContent, err := os.ReadFile(libDefaultPath)
+	if err != nil {
+		t.Fatalf("Failed to read lib/default.nix: %v", err)
+	}
+
+	if string(newContent) != existingContent {
+		t.Error("EnsureLibDefault() modified file that already had mkApp")
+	}
+}
+
+// Tests for Nix parser helpers
+
+func TestHasExport_Positive(t *testing.T) {
+	testCases := []struct {
+		name    string
+		content string
+		export  string
+		want    bool
+	}{
+		{
+			name: "simple export",
+			content: `{
+  mkApp = import ./mkApp.nix;
+}`,
+			export: "mkApp",
+			want:   true,
+		},
+		{
+			name: "export with spaces",
+			content: `{
+  mkApp    =    import ./mkApp.nix;
+}`,
+			export: "mkApp",
+			want:   true,
+		},
+		{
+			name: "export with other functions",
+			content: `{
+  foo = 1;
+  mkApp = import ./mkApp.nix;
+  bar = 2;
+}`,
+			export: "mkApp",
+			want:   true,
+		},
+		{
+			name: "no export",
+			content: `{
+  foo = 1;
+  bar = 2;
+}`,
+			export: "mkApp",
+			want:   false,
+		},
+		{
+			name: "export in comment",
+			content: `{
+  # mkApp = import ./mkApp.nix;
+  foo = 1;
+}`,
+			export: "mkApp",
+			want:   false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := hasExport(tc.content, tc.export)
+			if got != tc.want {
+				t.Errorf("hasExport() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCanSafelyModify(t *testing.T) {
+	testCases := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			name: "simple attrset",
+			content: `{ lib }:
+{
+  mkApp = import ./mkApp.nix;
+}`,
+			want: true,
+		},
+		{
+			name: "with let expression",
+			content: `{ lib }:
+let
+  foo = 1;
+in {
+  mkApp = import ./mkApp.nix;
+}`,
+			want: false,
+		},
+		{
+			name: "recursive attrset",
+			content: `{ lib }:
+rec {
+  mkApp = import ./mkApp.nix;
+}`,
+			want: false,
+		},
+		{
+			name:    "no braces",
+			content: `import ./something.nix`,
+			want:    false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := canSafelyModify(tc.content)
+			if got != tc.want {
+				t.Errorf("canSafelyModify() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAddExportToAttrSet(t *testing.T) {
+	content := `{ lib }:
+
+{
+  customFunction = x: x + 1;
+}`
+
+	newContent, err := addExportToAttrSet(content, "mkApp", "import ./mkApp.nix { inherit lib; }")
+	if err != nil {
+		t.Fatalf("addExportToAttrSet() error = %v", err)
+	}
+
+	// Verify mkApp was added
+	if !strings.Contains(newContent, "mkApp = import ./mkApp.nix { inherit lib; };") {
+		t.Error("addExportToAttrSet() did not add mkApp export")
+	}
+
+	// Verify existing content preserved
+	if !strings.Contains(newContent, "customFunction") {
+		t.Error("addExportToAttrSet() lost existing content")
+	}
+}
+
+// Tests for flake detection
+
+func TestDetectFlakeLibIntegration_Positive(t *testing.T) {
+	testCases := []struct {
+		name    string
+		flake   string
+		pattern string
+	}{
+		{
+			name: "outputs.lib pattern",
+			flake: `{
+  outputs = { self, nixpkgs }: {
+    lib = import ./lib;
+  };
+}`,
+			pattern: "outputs.lib",
+		},
+		{
+			name: "customLib pattern",
+			flake: `{
+  outputs = { self, nixpkgs }: let
+    customLib = import ./lib { lib = nixpkgs.lib; };
+  in {
+    nixosConfigurations = {};
+  };
+}`,
+			pattern: "let-customLib",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			flakePath := filepath.Join(tmpDir, "flake.nix")
+			err := os.WriteFile(flakePath, []byte(tc.flake), 0o644)
+			if err != nil {
+				t.Fatalf("Failed to create flake.nix: %v", err)
+			}
+
+			cfg := &internal.Config{
+				FlakePath: tmpDir,
+			}
+			init := NewInitializer(cfg)
+
+			integrated, pattern := init.DetectFlakeLibIntegration()
+			if !integrated {
+				t.Error("DetectFlakeLibIntegration() = false, want true")
+			}
+			if pattern != tc.pattern {
+				t.Errorf("DetectFlakeLibIntegration() pattern = %v, want %v", pattern, tc.pattern)
+			}
+		})
+	}
+}
+
+func TestDetectFlakeLibIntegration_Negative(t *testing.T) {
+	tmpDir := t.TempDir()
+	flakePath := filepath.Join(tmpDir, "flake.nix")
+
+	flakeContent := `{
+  outputs = { self, nixpkgs }: {
+    nixosConfigurations = {};
+  };
+}`
+
+	err := os.WriteFile(flakePath, []byte(flakeContent), 0o644)
+	if err != nil {
+		t.Fatalf("Failed to create flake.nix: %v", err)
+	}
+
+	cfg := &internal.Config{
+		FlakePath: tmpDir,
+	}
+	init := NewInitializer(cfg)
+
+	integrated, _ := init.DetectFlakeLibIntegration()
+	if integrated {
+		t.Error("DetectFlakeLibIntegration() = true, want false")
+	}
+}
+
+func TestDetectFlakeLibIntegration_NoFlake(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := &internal.Config{
+		FlakePath: tmpDir,
+	}
+	init := NewInitializer(cfg)
+
+	integrated, pattern := init.DetectFlakeLibIntegration()
+	if integrated {
+		t.Error("DetectFlakeLibIntegration() = true, want false")
+	}
+	if pattern != "no-flake" {
+		t.Errorf("DetectFlakeLibIntegration() pattern = %v, want no-flake", pattern)
+	}
+}
+
+// Integration test for Run() with new functionality
+
+func TestInitializer_Run_CreatesLibDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := &internal.Config{
+		FlakePath: tmpDir,
+	}
+
+	init := NewInitializer(cfg)
+
+	// Run initialization - note: this will print setup instructions
+	// since we don't have a flake.nix, but should not error
+	err := init.Run()
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// Verify lib/default.nix was created
+	libDefaultPath := filepath.Join(tmpDir, "lib", "default.nix")
+	if _, err := os.Stat(libDefaultPath); os.IsNotExist(err) {
+		t.Error("Run() did not create lib/default.nix")
+	}
+}
+
 // Benchmark tests
 func BenchmarkInitializer_Run(b *testing.B) {
 	for i := 0; i < b.N; i++ {

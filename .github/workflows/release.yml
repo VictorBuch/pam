@@ -1,0 +1,51 @@
+# GitHub Actions workflow for automated releases
+# This runs whenever you push a git tag like v0.1.0
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v0.1.0, v1.2.3, etc.
+
+permissions:
+  contents: write  # Needed to create releases
+  packages: write  # Needed for future package publishing
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the code at the tagged commit
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog generation
+
+      # 2. Set up Go environment
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      # 3. Run GoReleaser to build and publish
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional: Upload release artifacts as workflow artifacts for debugging
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-artifacts
+          path: |
+            dist/*.tar.gz
+            dist/checksums.txt

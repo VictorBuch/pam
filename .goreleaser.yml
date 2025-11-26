@@ -1,0 +1,119 @@
+# GoReleaser configuration for pam
+# Documentation: https://goreleaser.com
+
+version: 2
+
+before:
+  hooks:
+    # Ensure dependencies are up to date
+    - go mod tidy
+    # Run tests before building
+    - go test ./...
+
+builds:
+  - id: pam
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    # Exclude incompatible combinations
+    ignore:
+      - goos: windows
+    # Binary name
+    binary: pam
+    # Build flags
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: pam-archive
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - 'typo'
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Enhancements
+      regexp: '^.*?enhance(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: VictorBuch
+    name: pam
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## pam {{ .Tag }}
+
+    Package Application Manager for NixOS - Interactive package installation with automatic module generation.
+
+    ### Installation
+
+    Download the binary for your system:
+    - **Linux (x86_64)**: `pam_{{ .Version }}_linux_amd64.tar.gz`
+    - **Linux (ARM64)**: `pam_{{ .Version }}_linux_arm64.tar.gz`
+    - **macOS (Intel)**: `pam_{{ .Version }}_darwin_amd64.tar.gz`
+    - **macOS (Apple Silicon)**: `pam_{{ .Version }}_darwin_arm64.tar.gz`
+
+    Extract and move to your PATH:
+    ```bash
+    tar -xzf pam_{{ .Version }}_*.tar.gz
+    sudo mv pam /usr/local/bin/
+    ```
+
+  footer: |
+    ---
+
+    **Full Changelog**: https://github.com/VictorBuch/pam/blob/main/CHANGELOG.md
+
+# Skip publishing (for now - can enable later)
+# Uncomment when you want to publish to package managers
+# brews:
+#   - name: pam
+#     repository:
+#       owner: VictorBuch
+#       name: homebrew-tap
+#     description: "Package Application Manager for NixOS"
+#     homepage: "https://github.com/VictorBuch/pam"
+#     license: "MIT"
